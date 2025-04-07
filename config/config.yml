@@ -1,0 +1,11 @@
+%YAML:1.0
+Settings:
+  #串口波特率
+  BaudSpeed: 115200
+  #启用的相机编号
+  #CameraIds: [114514, 31415926, 0, 7]
+  CameraIds: [0]
+  #接收数据包编号
+  ReceivePacket: [0]
+  #发送数据包编号
+  SendPacket: [0]

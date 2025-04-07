@@ -1,0 +1,238 @@
+旋转方向判断:
+// 图像坐标系
+//  ____ → x
+// |
+// |
+// ↓ y
+
+// 数学坐标系
+// ↑ y
+// |
+// |____ → x
+
+// 如果角度随时间增加，则为逆时针 如果角度随时间减少，则为顺时针。
+// 但需要注意坐标系的转换，因为图像坐标系中Y轴向下，而数学坐标系Y轴向上。
+
+// 顺时针运动方向 对应 数学坐标系负方向
+// 逆时针运动方向 对应 数学坐标系正方向
+
+
+
+小符击打方案
+// 小符
+// 固定转速 1.036 rad/s
+// 180/PI=57.33
+// 相当于每秒转 59.39度
+// 匀速时预判位置
+// x=x0+r*cos(θ+ωt)
+// y=y0+r*sin(θ+ωt)
+// dx=x_current-x0
+// dy=y_current-y0
+// r = sqrt(dx^2 + dy^2) (这里应该等于已知的半径)
+// θ_current=atan2(dy, dx)
+// 顺时针旋转 ω取负值，ω变化为θ_current-ω*t
+// 拟时针旋转 ω取正值，ω变化为θ_current+ω*t
+// t秒后的角度是θ_current+ω*t，其中ω的符号由旋转方向决定
+// 新坐标为：
+// x_new = x0+r*cos(θ_new)
+// y_new = y0+r*sin(θ_new)
+
+
+
+
+
+大符击打方案
+// 大符
+// 变速时预判位置
+// 效果应该不好
+// 速度函数是spd(t)=a*sin(ω*t)+b
+// 角速度随时间变化的函数
+// 角度θ(t)应该是速度对时间的积分
+// θ(t)=θ0 +∫0->Δt[a*sin(ω*(t'+t0))+b]dt' t0是初始时间 Δt是经过的时间
+// 假设初始时间t0=0，那么经过Δt时间后的角度变化量应为积分从0到Δt的spd(t)dt
+// Δθ=∫0^Δt [a*sin(ω*t)+b]dt=-a/(ω)*cos(ω*Δt)+a/(ω)+b*Δt
+// 新的角度θ_new=θ_current+Δθ
+// a-[0.780,1.045] ω-[1.884,2.000] b=2.090-a
+
+//opencvC++通过图像识别已找出视频中一个运动的点,已知该点的运动轨迹为圆周运动，且圆心与半径已知，
+//该点的速度函数是spd(t)=a*sin(ω*t)+b，a的取值范围[0.780,1.045] ω的取值范围[1.884,2.000]
+// b=2.090-a，
+
+
+//f(t)=-a/ω*cos(ω*t+phi)+(2.090-a)t+c=Asin(ω*t+phi)+bt+c=Bsin(ω*t)+Ccos(ω*t)+bt+c
+//对t离散化后得到两种下文中主要使用到的表达式 (1)f(i)=-a/ω*cos(iω*(theta t)+phi)+(2.090-a)i*(theta t)+c
+// (2)f(i)=Bsin(iω*(theta t))+Ccos(iω*(theta t))+bi(theta t)+c,s.t.ω根号下B的平方+C的平方+b=2.090
+// 可以认为该问题中共含有4个未知参数，若能求解所有参数，即可预测任意时刻下该点的旋转角度，从(2)发现，若已知ω，f(i)可以表示为其余4个参数和已知量的线性表达式，
+// 可通过最小二乘法直接求解，于是问题的关键转化为对ω的求解
+// 有一方案
+// 1.以上一时刻计算的ω值为当前时刻的初值，若当前为初始时刻，则根据ω的取值范围设定初值为中间数1.942；
+// 2.固定ω，根据最小二乘法求取4个线性参数；
+// 3.固定4个线性参数，使用高斯牛顿法迭代优化ω；
+// 4.重复步骤2～3,直到delta<omega<eta
+//此外，为了解决噪声对拟合算法的影响，我们在进入优化之前需要对角度数据进行滤波处理，实验的测试中主要使用了均值滤波，
+//更好的选择是卡尔曼滤波；为了降低优化的复杂度，提升运行速度，我们可以对滤波后的数据进行降采样。
+//综合以上数据以及方案，如何实现对该点的预测
+
+
+//初步图像处理
+
+cv::Mat Detector::imageProcess(const cv::Mat &src, const ColorType &colorType)
+{
+    cv::Mat gray;
+    cv::Mat mat;
+    cv::Mat thresh_gray;
+    std::vector<cv::Mat>channels;
+    cv::Mat output_frame;
+    cv::split(src,channels);
+
+    if(colorType==Red)
+    {
+        subtract(channels[2], channels[0], output_frame);
+    }
+    else
+    {
+        subtract(channels[0], channels[2], output_frame);
+    }
+
+    auto current=std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double>elapsed=current-start;
+
+    cv::putText(src,"Time : "+std::to_string(elapsed.count()),cv::Point2f(0,42),cv::FONT_HERSHEY_SIMPLEX,0.6,cv::Scalar(165,155,255),1);
+
+//    cv::Point2d auto_c;//圆心
+//    double r = 0;//半径
+//    CircleFitting(points,auto_c,r);
+//    // 要调
+//    int radius=127; // 127 180
+
+//    cv::circle(output_frame,auto_c,radius,cv::Scalar(0,0,0),-1,8); //-1 210
+
+
+    cv::Mat kernel33=cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+
+//    cv::Mat blurred;
+//    cv::GaussianBlur(output_frame,blurred,cv::Size(5,5),0);// 3 5 7
+
+    cv::threshold(output_frame,mat,43,255,cv::THRESH_BINARY);//要调 50 80
+    cv::dilate(mat,mat,kernel33);
+
+    cv::cvtColor(src,gray,cv::COLOR_BGR2GRAY);
+    cv::threshold(gray,thresh_gray,43,255,cv::THRESH_BINARY);// 要调 50 80
+
+    cv::Mat blurred;
+    cv::GaussianBlur(thresh_gray,blurred,cv::Size(5,5),0);// 3 5 7
+
+    // 使用滤波
+    mat=blurred&mat;
+    // 不使用
+//    mat=thresh_gray&mat;
+    output_frame=mat;
+
+    //cv::Mat result =  fillHole(output_frame);
+
+    return output_frame;
+}
+
+
+
+////原轮廓处理
+
+//    // 分析最大面积轮廓
+//    for (size_t i = 0; i < contours.size(); ++i) {
+//        const double area = cv::contourArea(contours[i]);
+//        if (area > /*info.max_contour_area*/3600) {
+//            //info.max_contour_area = area;
+//            info.max_area_index = i;
+//        }
+//     }
+//    // 分析子轮廓数量
+//    for (size_t i = 0; i < contours.size(); ++i) {
+//        int child_count = 0;
+//        for (size_t j = 0; j < contours.size(); ++j) {
+//            if (hierarchy[j][3] == static_cast<int>(i)) {
+//                child_count++;
+//            }
+//        }
+//        if (child_count > info.max_child_count) {
+//            info.max_child_count = child_count;
+//            info.max_child_index = static_cast<int>(i);
+//        }
+//        if (info.max_child_index != -1 && !contours[i].empty()) {
+//            info.lenth_Area=cv::contourArea(contours[info.max_child_index/*max_area_index*/]);
+//            info.max_contour_length = cv::arcLength(contours[info.max_child_index], true);
+//        }
+//    }
+
+
+
+cv::Point2f Detector::SmallBuffPrognosis(const cv::Point2f& center,float radius,
+                                   const cv::Point2f& currentPos,float rotateSpeed,
+                                   bool isClockwise,float deltaTime){
+
+        // 图像坐标系转换为数学坐标系（y轴向上）
+        float img_dx = currentPos.x - center.x;
+        float img_dy = currentPos.y - center.y; // 反转图像y轴
+        float math_dy = -img_dy;
+
+        // 计算当前角度(弧度)(数学坐标系)
+        float math_theta = std::atan2(math_dy, img_dx);
+
+        // 确定角速度方向：图像顺时针对应数学顺时针（负角速度）
+        float math_omega = isClockwise ? -rotateSpeed : rotateSpeed;
+
+        // 计算新角度
+        float new_math_theta = math_theta + math_omega * deltaTime;
+
+        // 计算新位置的数学坐标
+        float new_math_x = radius * std::cos(new_math_theta);
+        float new_math_y = radius * std::sin(new_math_theta);
+
+        // 转换回图像坐标系（y轴向下）
+        float new_img_x = center.x + new_math_x;
+        float new_img_y = center.y - new_math_y;
+
+        return cv::Point2f(new_img_x, new_img_y);      
+
+}
+
+
+
+
+
+
+cv::Point2f Detector::SmallBuffPrognosis(const cv::Point2f& center,float radius,
+                                   const cv::Point2f& currentPos,float rotateSpeed,
+                                   bool isClockwise,float deltaTime){
+
+        // 图像坐标系转换为数学坐标系（y轴向上）
+        float img_dx = currentPos.x - center.x;
+        float img_dy = currentPos.y - center.y; // 反转图像y轴
+        float math_dy = -img_dy;
+
+        // 计算当前角度(弧度)(数学坐标系)
+        float math_theta = std::atan2(math_dy, img_dx);
+
+        // 确定角速度方向：图像顺时针对应数学顺时针（负角速度）
+        float math_omega = isClockwise ? -rotateSpeed : rotateSpeed;
+
+        // 计算新角度
+        float new_math_theta = math_theta + math_omega * deltaTime;
+
+        // 计算新位置的数学坐标
+        float new_math_x = radius * std::cos(new_math_theta);
+        float new_math_y = radius * std::sin(new_math_theta);
+
+        // 转换回图像坐标系（y轴向下）
+        float new_img_x = center.x + new_math_x;
+        float new_img_y = center.y - new_math_y;
+
+        return cv::Point2f(new_img_x, new_img_y);      
+
+}
+
+
+
+
+
+
+

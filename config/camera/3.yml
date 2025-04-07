@@ -1,0 +1,35 @@
+%YAML:1.0
+
+
+# 这是一个大华相机的示例配置
+
+
+#相机类型
+#Dahua = 0
+#Mind = 1
+#Daheng = 2
+#Virtual = 3
+#Video = 4
+CameraType: 0
+#内参矩阵
+CameraMatrix: [1177.7,21.7355,360.0000,0,1177.7,360.0000,0,0,1]
+#畸变矩阵
+DistCoeffs: [-0.3510,-0.3080,-0.00098682,-0.0008711,3.1083]
+#视频读取休眠时间(ms)
+TimeOff : 1
+
+#曝光时间
+Exposure : 3000
+#宽
+Width : 960
+#高
+Height : 768
+#增益蓝
+RgbBlue : 1
+#增益绿
+RgbGreen : 1
+#增益红
+RgbRed : 0.9
+
+
+

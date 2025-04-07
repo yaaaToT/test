@@ -1,0 +1,8 @@
+%YAML:1.0
+
+SendPacket:
+  Head: 0x6b
+  Tail: 0Xb6
+ReceivePacket:
+  Head: 0xCC
+  Tail: 0xDD

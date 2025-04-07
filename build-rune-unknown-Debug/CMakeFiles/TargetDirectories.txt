@@ -1,0 +1,3 @@
+/home/yaaa/rune/build-rune-unknown-Debug/CMakeFiles/rune.dir
+/home/yaaa/rune/build-rune-unknown-Debug/CMakeFiles/edit_cache.dir
+/home/yaaa/rune/build-rune-unknown-Debug/CMakeFiles/rebuild_cache.dir
